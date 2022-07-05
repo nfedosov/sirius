@@ -5,10 +5,10 @@ from PyQt6.QtCore import Qt
 
 
 class Panel(QtWidgets.QLabel):
-    def __init__(self, message):
+    def __init__(self):
         super().__init__()
 
-        self.message = message
+        #self.message = message
         self.title = "InfoWindow"
         self.top = 100
         self.left = 100
@@ -32,6 +32,6 @@ class Panel(QtWidgets.QLabel):
         self.setFont(font)
         self.show()
 
-    def ChangeText(self):
+    def ChangeText(self,message):
         #all flags, checks and changes here
-        self.setText(self.message)
+        self.setText(message)
