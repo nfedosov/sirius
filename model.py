@@ -330,7 +330,7 @@ class Model:
      
         
         
-model = Model()
-model.fit()
-model.test()
+#model = Model()
+#model.fit()
+#model.test()
 #model.run_online()
