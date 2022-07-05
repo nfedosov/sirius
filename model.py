@@ -302,8 +302,7 @@ class Model:
         assert x_batch.shape[0]==y_predicted.shape[0]
   
             
-        available_idx = np.sum(self.y, axis = 1)>0
-        max_test_corr = np.mean(np.squeeze(y_predicted).argmax(axis=1) == self.y[available_idx[batch_idx],:].argmax(axis = 1))
+        max_test_corr = np.mean(np.squeeze(y_predicted).argmax(axis=1) == self.y[batch_idx,:].argmax(axis = 1))
         
         print("Correlation val on test", max_test_corr)
         
@@ -326,24 +325,12 @@ class Model:
         batch_x = self.data[batch_cut_idx,:].transpose(0,2,1)
         batch_y = self.y[batch_idx,:]
         
-                #if len(Y_active) > 0:
-                #    batch_y = Y_active[[batch_samples]]
-        return (batch_x, batch_y, batch_idx)
-                #else:
-                #yield batch_x
-    
-            #if not infinite:
-            #    break
-    
-    
- 
-    # загрузка модели
-    #
-    #class Model:
         
+        return (batch_x, batch_y, batch_idx)
+     
         
         
 model = Model()
 model.fit()
 model.test()
-model.run_online()
+#model.run_online()

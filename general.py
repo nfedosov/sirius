@@ -19,7 +19,7 @@ class General:
 
 
     def run_game(self):
-        
+        pass
         
         
         
@@ -43,8 +43,8 @@ model.test()
 
 general = General()
 
-general.run_lsl_generator()
-general.run_game()
+#general.run_lsl_generator()
+#general.run_game()
 
 
 
