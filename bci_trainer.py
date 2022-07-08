@@ -50,7 +50,7 @@ def record_data(exp_settings, inlet, panel):
             buffer[n_samples_received:n_samples_received+residual_samples,
             :n_channels] = chunk[-residual_samples:, :]
             buffer[n_samples_received:n_samples_received+residual_samples,
-            STIM_CHANNEL] = block_id
+            STIM_CHANNEL] = int(block_id)
             n_samples_received_in_block += residual_samples
             n_samples_received += residual_samples
 

@@ -2,6 +2,7 @@ from pylsl.pylsl import StreamOutlet, StreamInfo
 import numpy as np
 import time
 import pandas as pd
+import keyboard
 
 
 
@@ -25,13 +26,13 @@ def run_lsl_generator():
    
      
       session_num = 0
-      num = 1
+      num = 5
       path_dir = 'results/session_{}/'.format(session_num)
   
       
     
  
-      dataframe = pd.read_csv(path_dir+'bci_exp_nostim'+str(num)+'/data.csv')
+      dataframe = pd.read_csv(path_dir+'bci_exp_nostim_'+str(num)+'/data.csv')
       data = (dataframe.to_numpy()[:,1:])
     
          
@@ -41,7 +42,7 @@ def run_lsl_generator():
      
       fs = 500
       chNames = list()
-      for i in range(19):
+      for i in range(data.shape[1]):
           chNames.append(str(i))
       chCount = len(chNames)
       Ns = 10 # number of samples to send
@@ -50,18 +51,24 @@ def run_lsl_generator():
 
 
      
-      outlet = BCIStreamOutlet(chCount, chNames, fs)
-
-      start_time = time.time()
+      outlet = BCIStreamOutlet(chCount, chNames, fs, Ns)
       model_time = 0.0
-      
       samples_count = 0
+      nT = data.shape[0]
+      
+      while(not keyboard.is_pressed('s')):
+          pass
+      start_time = time.time()
       while(1):
           cur_time = time.time()
           if cur_time-start_time > model_time+Ns/fs:
 
-              x = np.random.randn(chCount*Ns,).tolist()
-              outlet.push_chunk(x)
+              if samples_count+Ns <= nT:
+                  x = data[samples_count:samples_count+Ns,:]
+              else:
+                  x = data[samples_count:]
+                  
+              outlet.push_chunk(x.ravel().tolist())
               model_time += Ns/fs
               samples_count += Ns
               
