@@ -159,8 +159,8 @@ class Model:
     def __init__(self):
         self.labels_id = [1,2,3]
         self.srate = 128
-        self.b, self.a = sn.butter(2, [2, 40], btype='bandpass', fs=self.srate)
-        self.b50, self.a50 = sn.butter(2, [48, 52], btype='bandstop', fs=self.srate)
+        self.b, self.a = sn.butter(2, [5, 36], btype='bandpass', fs=self.srate)
+        self.b50, self.a50 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
         #self.b60, self.a60 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
         #self.b60, self.a60 = [np.ones(self.b60.shape), np.ones(self.a60.shape)]
         self.lag_backwards = 256
