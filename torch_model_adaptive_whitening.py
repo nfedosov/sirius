@@ -12,8 +12,7 @@ import scipy.signal as sn
 from torch.nn.utils import parametrize
 import pandas as pd
 from matplotlib import pyplot as plt
-from scipy.signal import welch
-    
+import scipy.linalg as la
     
 class Symmetric(nn.Module):
     def forward(self, weight):
@@ -79,6 +78,8 @@ class EnvelopeDetector(nn.Module):
 class SimpleNet(nn.Module):
     def __init__(self, in_channels, output_channels, lag_backward, srate):
         super(SimpleNet, self).__init__()
+        
+        self.in_channels = in_channels
         self.ICA_CHANNELS = 5
         self.fin_layer_decim = 20
         self.CHANNELS_PER_CHANNEL = 1
@@ -98,6 +99,10 @@ class SimpleNet(nn.Module):
         self.features_batchnorm = torch.nn.BatchNorm1d(self.final_out_features, affine=False)
         self.unmixed_batchnorm = torch.nn.BatchNorm1d(self.total_input_channels, affine=False)
 
+        self.batchnorm1 = torch.nn.BatchNorm1d(32, affine=False)
+        
+
+
         self.wights_second = nn.Linear(self.final_out_features, output_channels)
         
         #self.dropout = nn.Dropout(p=self.DROPOUT_P)
@@ -106,27 +111,70 @@ class SimpleNet(nn.Module):
         
         
         
+  
+        #self.human_pool3 = nn.MaxPool2d((4,12),stride = 6)
+        #flatten
         
-        ####
-        #self.human_conv1 = nn.Conv1d(in_channels, in_channels, bias=False, kernel_size=32,
-        #                                groups=in_channels)
-        #self.human_pool1 = 
-        #self.human_conv2 = 
-        #self.human_pool2 = 
-        #self.human_prelinear1
-        #self.human_linear1 = nn.Linear(in_channels, in_channels)
-        #self.human_linear2 = nn.Linear(in_channels, in_channels)
-        #self.human_to_classif1 =  nn.Linear(in_channels, 50)
-        #self.human_to_classif2 =  nn.Linear(50, 109)
+        self.prelinear1 = nn.Linear(self.in_channels,32)
+        self.prelinear2 = nn.Linear(32,32)
+        self.prelinear3 = nn.Linear(32,32)
+        self.prelinear4 = nn.Linear(32,32)
+        self.prelinear5 = nn.Linear(32,self.ICA_CHANNELS)
+        #self.human_linear2 =  
         
-        ####
+        
+        #abs
+        
+        # maxpool
+        
+        # conv2 
+        
+        # relu
+    
+        #maxpool hard
+        
+        #flatten
+        
+        #sigmoud
+        
+        #parallelelirizing
+        #sigmoid to weights
+        
+        #sigmoid to outputs
+        
+        
+    
+    
         
         
         
         
 
     def forward(self, inputs):
-        all_inputs = self.ica(inputs)
+        
+        x = torch.transpose(inputs,1,2)
+        
+        x = self.prelinear1(torch.exp(-torch.pow(x,2)))
+        
+        x = self.batchnorm1(x)
+        
+        x = torch.nn.functional.sigmoid(self.prelinear2(x))
+        
+        x = self.batchnorm1(x)
+        
+        x = torch.nn.functional.sigmoid(self.prelinear3(x))
+        
+        x = self.batchnorm1(x)
+        
+        x = torch.nn.functional.sigmoid(self.prelinear4(x))
+        
+        x = self.batchnorm1(x)
+        
+        x = torch.nn.functional.sigmoid(self.prelinear5(x-0.5))
+        
+        all_inputs = torch.transpose(x,1,2)
+        
+        #all_inputs = self.ica(inputs)
         
         #all_inputs = self.dropout(all_inputs)
 
@@ -172,12 +220,10 @@ class Model:
     def __init__(self):
         self.labels_id = [1,2,3]
         self.srate = 128
-        self.b, self.a = sn.butter(2, [2, 40], btype='bandpass', fs=self.srate)
-        
-        #CHANGE !!!!!!!
+        self.b, self.a = sn.butter(2, [5, 36], btype='bandpass', fs=self.srate)
         self.b50, self.a50 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
-        self.b60, self.a60 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
- 
+        #self.b60, self.a60 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
+        #self.b60, self.a60 = [np.ones(self.b60.shape), np.ones(self.a60.shape)]
         self.lag_backwards = 256
         self.train_batch_size = 1024
         self.val_batch_size = 1024
@@ -192,7 +238,7 @@ class Model:
         self.epochs = 200
         self.criterion = nn.CrossEntropyLoss()
         self.device = 'cpu'
-        self.train_val_stride = 64#self.lag_backwards // 2
+        self.train_val_stride = 16# 64#self.lag_backwards // 2
         self.test_stride = 1
         self.train_only_full_class = True
         self.val_only_full_class = True
@@ -257,7 +303,7 @@ class Model:
 
         self.model = SimpleNet(data_storage_train.data.shape[1], len(self.labels_id), self.lag_backwards, self.srate)
         self.model.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=2e-3)#3e-4)#weight_decay=1e-2)#0.02#3e-4
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=3e-4)#weight_decay=1e-2)#0.02#3e-4
 
         print("Trainable params: ", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
         print("Total params: ", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
@@ -317,29 +363,12 @@ class DataStorage:
             for num in run_nums:
                 dataframe = pd.read_csv(f'results/session_{session_num}/bci_exp_{num}/data.csv')
                 data.append(dataframe.to_numpy()[:, 1:-1])
-                
-                #plt.figure()
-                
-                #f, pxx = welch(data[cum_num], fs = 128, nperseg = 256, noverlap = 128,nfft = 
-                #               256, axis = 0)
-                
-                #plt.plot(f, np.log10(pxx))
-                
-                
                 data[cum_num] = sn.lfilter(b, a, data[cum_num], axis=0)
                 data[cum_num] = sn.lfilter(b50, a50, data[cum_num], axis=0)
                 
-                data[cum_num] = data[cum_num]/np.sqrt(np.mean(data[cum_num]**2))
+                cov = np.cov(data[cum_num].T)
+                data[cum_num] = data[cum_num]@la.fractional_matrix_power(cov,-1/2)#/np.sqrt(np.mean(data[cum_num]**2))
                 labels.append((dataframe.to_numpy()[:, -1]).astype('int'))
-                
-                #plt.figure()
-                
-                #f, pxx = welch(data[cum_num], fs = 128, nperseg = 256, noverlap = 128,nfft = 
-                #               256, axis = 0)
-                
-                #plt.plot(f, np.log10(pxx))
-                
-                
                 
                 cum_num += 1
 
