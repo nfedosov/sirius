@@ -47,7 +47,7 @@ class General:
         while(True):
             chunk, t_stamp = inlet.get_next_chunk()
             if chunk is not None:
-                model.predict_once(chunk)        
+                state = model.predict_once(chunk)        
                 
         
 

@@ -14,215 +14,303 @@ import pandas as pd
 from matplotlib import pyplot as plt
 import scipy.linalg as la
     
-class Symmetric(nn.Module):
-    def forward(self, weight):
-        left_kernel_size = weight.size(-1) // 2
-        right_kernel_size = left_kernel_size
-        if weight.size(-1) % 2 == 1:
-            left_kernel_size += 1        
-        weight_left = weight[:, :, :left_kernel_size]
-        weight_right = torch.flip(weight[:, :, :right_kernel_size], dims=(-1,))
-        full_weight = torch.cat([weight_left, weight_right], dim=-1)
-        return full_weight
-        
-
-class EnvelopeDetector(nn.Module):
-    def __init__(self, in_channels, channels_per_channel, fs):
-        super(EnvelopeDetector, self).__init__()
-        self.FILTERING_SIZE = 101
-        self.ENVELOPE_SIZE = 51
-        
-        #self.DROPOUT_P = 0#0.25
-        
-        self.CHANNELS_PER_CHANNEL = channels_per_channel
-        self.OUTPUT_CHANNELS = self.CHANNELS_PER_CHANNEL * in_channels
-        self.conv_filtering = nn.Conv1d(in_channels, self.OUTPUT_CHANNELS, bias=False, kernel_size=self.FILTERING_SIZE,
-                                        groups=in_channels)
-        parametrize.register_parametrization(self.conv_filtering, "weight", Symmetric())
-        
-        self.conv_envelope = nn.Conv1d(self.OUTPUT_CHANNELS, self.OUTPUT_CHANNELS, kernel_size=self.ENVELOPE_SIZE,
-                                       groups=self.OUTPUT_CHANNELS)
-        parametrize.register_parametrization(self.conv_envelope, "weight", Symmetric())
-        
-        h =sn.firwin(self.ENVELOPE_SIZE, 2, window='hamming', pass_zero=True, fs=fs)
-        self.conv_envelope.weight.data = torch.tensor(np.tile(h[None,None,:],(in_channels,1,1)))
-        
-        h =sn.firwin(self.FILTERING_SIZE, [6,30], window='hamming', pass_zero=False, fs=fs)
-        self.conv_envelope.weight.data = torch.tensor(np.tile(h[None,None,:],(in_channels,1,1)))
-        
-        
-        
-        
-        self.conv_envelope.requires_grad = False
-        self.pre_envelope_batchnorm = torch.nn.BatchNorm1d(self.OUTPUT_CHANNELS, affine=False)
-        self.conv_envelope.weight.data = (
-                torch.ones(self.OUTPUT_CHANNELS * self.ENVELOPE_SIZE) / self.FILTERING_SIZE).reshape(
-            (self.OUTPUT_CHANNELS, 1, self.ENVELOPE_SIZE))
-                    
-        #self.dropout = nn.Dropout(p=self.DROPOUT_P)
-
-    def forward(self, x):
-        x = self.conv_filtering(x)
-        
-        #x = self.dropout(x)
-        
-        x = self.pre_envelope_batchnorm(x)
-        x = torch.abs(x)
-        x = self.conv_envelope(x)
-        
-        #x = self.dropout(x)
-        
-        return x
-
-
 class SimpleNet(nn.Module):
     def __init__(self, in_channels, output_channels, lag_backward, srate):
         super(SimpleNet, self).__init__()
         
-        self.in_channels = in_channels
-        self.ICA_CHANNELS = 5
-        self.fin_layer_decim = 20
-        self.CHANNELS_PER_CHANNEL = 1
         
-        #self.DROPOUT_P = 0#0.25
+        ch_names = ['Fc5.', 'Fc3.', 'Fc1.', 'Fcz.', 'Fc2.', 'Fc4.', 'Fc6.', 'C5..', 'C3..', 'C1..', 'Cz..', 'C2..', 'C4..', 'C6..', 'Cp5.', 'Cp3.', 'Cp1.', 'Cpz.', 'Cp2.', 'Cp4.', 'Cp6.', 'F3..',  'Fz..',  'F4..', 'P3..', 'Pz..', 'P4..']
 
-        self.total_input_channels = self.ICA_CHANNELS  # + in_channels
-        self.lag_backward = lag_backward
-
-        self.ica = nn.Conv1d(in_channels, self.ICA_CHANNELS, 1)
-
-        self.detector = EnvelopeDetector(self.total_input_channels, self.CHANNELS_PER_CHANNEL, srate)
-
-        self.final_out_features = self.ICA_CHANNELS * ((lag_backward - self.detector.FILTERING_SIZE - \
-                                                        self.detector.ENVELOPE_SIZE + 2) // self.fin_layer_decim)
-
-        self.features_batchnorm = torch.nn.BatchNorm1d(self.final_out_features, affine=False)
-        self.unmixed_batchnorm = torch.nn.BatchNorm1d(self.total_input_channels, affine=False)
-
-        self.batchnorm1 = torch.nn.BatchNorm1d(35, affine=False)
-        
-
-
-        self.wights_second = nn.Linear(self.final_out_features, output_channels)
-        
-        #self.dropout = nn.Dropout(p=self.DROPOUT_P)
-
-        self.sigmoid = torch.nn.Sigmoid()
-        
-        
-        
+        self.ch_groups = [list(),list(),list()]
   
-        #self.human_pool3 = nn.MaxPool2d((4,12),stride = 6)
-        #flatten
         
-        self.prelinear1 = nn.Linear(self.in_channels,35)
-        self.prelinear2 = nn.Linear(35,35)
-        self.prelinear3 = nn.Linear(32,32)
-        self.prelinear4 = nn.Linear(32,32)
-        self.prelinear5 = nn.Linear(35,self.ICA_CHANNELS)
-        #self.human_linear2 =  
+        for i, ch in enumerate(ch_names):
+            ls = [int(s) for s in ch if s.isdigit()]
+            if len(ls) == 0:
+                self.ch_groups[1].append(i)
+                continue
+            else:
+                dig = int(ls[len(ls)-1])
+                if dig %2 == 1:
+                    self.ch_groups[2].append(i)
+                if dig %2 == 0:
+                    self.ch_groups[0].append(i)
+                if (dig == 1) | (dig == 2):
+                    self.ch_groups[1].append(i)
+       
+   
+        
+     
+        self.in_channels = in_channels
         
         
+        '''
+        self.filtering1 = [] # mu, alpha, beta, e. t. c.
+        self.batch1 = []
+        
+        self.filtering2 = []
+        #self.filtering2_central = torch.nn.Conv2d(6,6, (, 1), bias = False, groups = 6)
         #abs
+        self.batch2 = []
         
-        # maxpool
         
-        # conv2 
+        self.filtering3 = [] #envelopes of filters
+        self.pool1 = [] # scale
+        self.batch3 = []
         
-        # relu
+        
+        
+        
+        self.features1 = [] 
+        # ReLu
+        self.pool2 = [] # scale
+        self.batch4 = []
+        
+        self.features2 = []
+        # ReLu
+        self.pool3 =  []# scale
+        self.batch5 = []
+        for i in range(3):
+            self.filtering1.append(torch.nn.Conv2d(1, 5, (1, 32), bias = False)) # mu, alpha, beta, e. t. c.
+            self.batch1.append(torch.nn.BatchNorm2d(5))
+            
+            self.filtering2.append(torch.nn.Conv2d(5,5, (11, 1), bias = False, groups = 5))
+            #self.filtering2_central = torch.nn.Conv2d(6,6, (, 1), bias = False, groups = 6)
+            #abs
+            self.batch2.append(torch.nn.BatchNorm2d(5))
+            
+            
+            self.filtering3.append(torch.nn.Conv2d(5, 5, (1,32), groups = 5)) #envelopes of filters
+            self.pool1.append(torch.nn.AvgPool2d((1,7),stride = (1,3))) # scale
+            self.batch3.append(torch.nn.BatchNorm2d(5))
+            
+            
+            
+            
+            self.features1.append(torch.nn.Conv2d(1,12, (5,8)))   
+            # ReLu
+            self.pool2.append(torch.nn.MaxPool2d((1,3),stride = (1,2))) # scale
+            self.batch4.append(torch.nn.BatchNorm2d(12))
+            
+            self.features2.append(torch.nn.Conv2d(1,10, (12,8)))
+            # ReLu
+            self.pool3.append(torch.nn.MaxPool2d((1,3),stride = (1,2)))# scale
+            self.batch5.append(torch.nn.BatchNorm2d(10))'''
+            
+            
+            
+        ####
+        self.filtering1_1 = torch.nn.Conv2d(1, 5, (1, 32), bias = False) # mu, alpha, beta, e. t. c.
+        self.batch1_1 = torch.nn.BatchNorm2d(5)
+        
+        self.filtering2_1 = torch.nn.Conv2d(5,5, (11, 1), bias = False, groups = 5)
+        #self.filtering2_central = torch.nn.Conv2d(6,6, (, 1), bias = False, groups = 6)
+        #abs
+        self.batch2_1 = torch.nn.BatchNorm2d(5)
+        
+        
+        self.filtering3_1 = torch.nn.Conv2d(5, 5, (1,32), groups = 5) #envelopes of filters
+        self.pool1_1 = torch.nn.AvgPool2d((1,7),stride = (1,3)) # scale
+        self.batch3_1 = torch.nn.BatchNorm2d(5)
+        
+        
+        
+        
+        self.features1_1 = torch.nn.Conv2d(1,12, (5,8))  
+        # ReLu
+        self.pool2_1 = torch.nn.MaxPool2d((1,3),stride = (1,2)) # scale
+        self.batch4_1 = torch.nn.BatchNorm2d(12)
+        
+        self.features2_1 = torch.nn.Conv2d(1,10, (12,8))
+        # ReLu
+        self.pool3_1 = torch.nn.MaxPool2d((1,3),stride = (1,2))# scale
+        self.batch5_1 = torch.nn.BatchNorm2d(10)
+        
+        ####
+        ####
+        self.filtering1_2 = torch.nn.Conv2d(1, 5, (1, 32), bias = False) # mu, alpha, beta, e. t. c.
+        self.batch1_2 = torch.nn.BatchNorm2d(5)
+        
+        self.filtering2_2 = torch.nn.Conv2d(5,5, (11, 1), bias = False, groups = 5)
+        #self.filtering2_central = torch.nn.Conv2d(6,6, (, 1), bias = False, groups = 6)
+        #abs
+        self.batch2_2 = torch.nn.BatchNorm2d(5)
+        
+        
+        self.filtering3_2 = torch.nn.Conv2d(5, 5, (1,32), groups = 5) #envelopes of filters
+        self.pool1_2 = torch.nn.AvgPool2d((1,7),stride = (1,3)) # scale
+        self.batch3_2 = torch.nn.BatchNorm2d(5)
+        
+        
+        
+        
+        self.features1_2 = torch.nn.Conv2d(1,12, (5,8))  
+        # ReLu
+        self.pool2_2 = torch.nn.MaxPool2d((1,3),stride = (1,2)) # scale
+        self.batch4_2 = torch.nn.BatchNorm2d(12)
+        
+        self.features2_2 = torch.nn.Conv2d(1,10, (12,8))
+        # ReLu
+        self.pool3_2 = torch.nn.MaxPool2d((1,3),stride = (1,2))# scale
+        self.batch5_2 = torch.nn.BatchNorm2d(10)
+        
+        ####
+        
+        ####
+        self.filtering1_3 = torch.nn.Conv2d(1, 5, (1, 32), bias = False) # mu, alpha, beta, e. t. c.
+        self.batch1_3 = torch.nn.BatchNorm2d(5)
+        
+        self.filtering2_3 = torch.nn.Conv2d(5,5, (11, 1), bias = False, groups = 5)
+        #self.filtering2_central = torch.nn.Conv2d(6,6, (, 1), bias = False, groups = 6)
+        #abs
+        self.batch2_3 = torch.nn.BatchNorm2d(5)
+        
+        
+        self.filtering3_3 = torch.nn.Conv2d(5, 5, (1,32), groups = 5) #envelopes of filters
+        self.pool1_3 = torch.nn.AvgPool2d((1,7),stride = (1,3)) # scale
+        self.batch3_3 = torch.nn.BatchNorm2d(5)
+        
+        
+        
+        
+        self.features1_3 = torch.nn.Conv2d(1,12, (5,8))  
+        # ReLu
+        self.pool2_3 = torch.nn.MaxPool2d((1,3),stride = (1,2)) # scale
+        self.batch4_3 = torch.nn.BatchNorm2d(12)
+        
+        self.features2_3 = torch.nn.Conv2d(1,10, (12,8))
+        # ReLu
+        self.pool3_3 = torch.nn.MaxPool2d((1,3),stride = (1,2))# scale
+        self.batch5_3 = torch.nn.BatchNorm2d(10)
+        
+        ####
+            
+            
+            
+        
+      
     
-        #maxpool hard
+        self.linear1 = torch.nn.Linear(10*3, 10)
+        self.batch7 = torch.nn.BatchNorm1d(10)
+        #sigmoid
         
-        #flatten
-        
-        #sigmoud
-        
-        #parallelelirizing
-        #sigmoid to weights
-        
-        #sigmoid to outputs
-        
-        
+    
+        self.linear2 = torch.nn.Linear(10, 3)
+        #sigmoid
+    
     
     
         
-        
-        
+    
+   
         
 
     def forward(self, inputs):
         
-        x = torch.transpose(inputs,1,2)
-        x = torch.nn.functional.tanh(self.prelinear1(x))
-        x = torch.transpose(x,1,2)
-        
-        x = self.batchnorm1(x)
+        y = torch.Tensor()
         
         
-    
-        x = torch.transpose(x,1,2)
-        x = torch.nn.functional.tanh(self.prelinear2(x))
-        x = torch.transpose(x,1,2)
+            
+        x = inputs[:,None,self.ch_groups[0],:]
+        x = self.filtering1_1(x)
+        x = self.batch1_1(x)
+            
+        x = self.filtering2_1(x)
+        x = torch.abs(x)
+        x = self.batch2_1(x)
+            
+        x = self.filtering3_1(x)
+        x = self.pool1_1(x)
+        x = self.batch3_1(x)
+            
+        x = self.features1_1(torch.squeeze(x)[:,None,:,:])
+        x = torch.nn.functional.relu(x)
+        x = self.pool2_1(x)
+        x = self.batch4_1(x)
+            
+        x = self.features2_1(torch.squeeze(x)[:,None,:,:])
+        x = torch.nn.functional.relu(x)
+        x = self.pool3_1(x)
+        x = self.batch5_1(x)
+            
+        x = torch.squeeze(torch.mean(x,dim = -1))
+            
+        y = torch.cat((y,x),dim = 1)
         
-        x = self.batchnorm1(x)
-        
-        # x = torch.transpose(x,1,2)
-        # x = torch.exp(-torch.pow(self.prelinear3(x),2))
-        # x = torch.transpose(x,1,2)
-        
-        # x = self.batchnorm1(x)
-        
-        # x = torch.transpose(x,1,2)
-        # x = torch.exp(-torch.pow(self.prelinear4(x),2))
-        # x = torch.transpose(x,1,2)
-        
-        # x = self.batchnorm1(x)
+        ####
         
         
-        x = torch.transpose(x,1,2)
-        x = torch.nn.functional.tanh(self.prelinear5(x))
-        all_inputs = torch.transpose(x,1,2)
+        x = inputs[:,None,self.ch_groups[1],:]
+        x = self.filtering1_2(x)
+        x = self.batch1_2(x)
+            
+        x = self.filtering2_2(x)
+        x = torch.abs(x)
+        x = self.batch2_2(x)
+            
+        x = self.filtering3_2(x)
+        x = self.pool1_2(x)
+        x = self.batch3_2(x)
+            
+        x = self.features1_2(torch.squeeze(x)[:,None,:,:])
+        x = torch.nn.functional.relu(x)
+        x = self.pool2_2(x)
+        x = self.batch4_2(x)
+            
+        x = self.features2_2(torch.squeeze(x)[:,None,:,:])
+        x = torch.nn.functional.relu(x)
+        x = self.pool3_2(x)
+        x = self.batch5_2(x)
+            
+        x = torch.squeeze(torch.mean(x,dim = -1))
+            
+        y = torch.cat((y,x),dim = 1)
         
-        #all_inputs = self.ica(inputs)
         
-        #all_inputs = self.dropout(all_inputs)
-
-        all_inputs = self.unmixed_batchnorm(all_inputs)
-
-        detected_envelopes = self.detector(all_inputs)
-
-        features = detected_envelopes[:, :, (self.lag_backward - self.detector.FILTERING_SIZE - \
-                                             self.detector.ENVELOPE_SIZE + 2) % self.fin_layer_decim::self.fin_layer_decim].contiguous()
-        features = features.view(features.size(0), -1)
-        features = self.features_batchnorm(features)
+        ####
+        x = inputs[:,None,self.ch_groups[2],:]
+        x = self.filtering1_3(x)
+        x = self.batch1_3(x)
+            
+        x = self.filtering2_3(x)
+        x = torch.abs(x)
+        x = self.batch2_3(x)
+            
+        x = self.filtering3_3(x)
+        x = self.pool1_3(x)
+        x = self.batch3_3(x)
+            
+        x = self.features1_3(torch.squeeze(x)[:,None,:,:])
+        x = torch.nn.functional.relu(x)
+        x = self.pool2_3(x)
+        x = self.batch4_3(x)
+            
+        x = self.features2_3(torch.squeeze(x)[:,None,:,:])
+        x = torch.nn.functional.relu(x)
+        x = self.pool3_3(x)
+        x = self.batch5_3(x)
+            
+        x = torch.squeeze(torch.mean(x,dim = -1))
+            
+        y = torch.cat((y,x),dim = 1)
         
-        #features = self.dropout(features)
+        ####
         
-        output = self.wights_second(features)
-        # print(output)
-        output = self.sigmoid(output)
-        # print(output)
-        return output
-    
-
-# class SimpleNet(nn.Module):
-#     def __init__(self, in_channels, output_channels, lag_backward):
-#         super(SimpleNet, self).__init__()
-#         self.flatten = nn.Flatten()
-#         kernel_size = 33
-#         self.conv1d_space = nn.Conv1d(in_channels, 3, kernel_size=1)
-#         self.activation = nn.Tanh()
-#         self.conv1d = nn.Conv1d(3, 3, kernel_size=kernel_size, groups=3)
-#         # self.pool1 = nn.AvgPool1d(kernel_size=65, stride=32)
-#         size_after_convo = lag_backward - kernel_size + 1
-#         # self.linear = nn.Linear(in_channels * size_after_convo, output_channels)
         
-#     def forward(self, inputs):
-#         out = self.conv1d_space(inputs)
-#         out = self.conv1d(out)
-#         out = torch.mean(out ** 2, axis=-1)
-#         out = self.flatten(out)
-#         return out
+        
+        x = torch.sigmoid(self.linear1(y))
+        x = self.batch7(x)
+        
+   
+        x = torch.sigmoid(self.linear2(x))
+        
+        
+      
+        return x
+        
+        
+        
+   
 
 
 class Model:
@@ -233,10 +321,10 @@ class Model:
         self.b50, self.a50 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
         #self.b60, self.a60 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
         #self.b60, self.a60 = [np.ones(self.b60.shape), np.ones(self.a60.shape)]
-        self.lag_backwards = 256
+        self.lag_backwards = 128*2
         self.train_batch_size = 1024
         self.val_batch_size = 1024
-        self.test_batch_size = 512
+        self.test_batch_size = 1024
         self.train_sessions = np.arange(1,80,dtype = int)#[1]
         self.train_runs = [0, 1,3,4]
         self.val_sessions = np.arange(1,80,dtype = int)#[1]
@@ -244,10 +332,10 @@ class Model:
         self.test_sessions = np.arange(81,110,dtype = int)
         self.test_runs = [0,1,2,3,4,5]
         #self.percentage_of_train = 0.85
-        self.epochs = 200
-        self.criterion = nn.CrossEntropyLoss()
+        self.epochs = 40
+        self.criterion = nn.MSELoss()
         self.device = 'cpu'
-        self.train_val_stride = 64# 64#self.lag_backwards // 2
+        self.train_val_stride = 8# 64#self.lag_backwards // 2
         self.test_stride = 1
         self.train_only_full_class = True
         self.val_only_full_class = True
@@ -312,7 +400,7 @@ class Model:
 
         self.model = SimpleNet(data_storage_train.data.shape[1], len(self.labels_id), self.lag_backwards, self.srate)
         self.model.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=3e-4)#weight_decay=1e-2)#0.02#3e-4
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-4)#weight_decay=1e-2)#0.02#3e-4
 
         print("Trainable params: ", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
         print("Total params: ", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
@@ -376,7 +464,8 @@ class DataStorage:
                 data[cum_num] = sn.lfilter(b50, a50, data[cum_num], axis=0)
                 
                 cov = np.cov(data[cum_num].T)
-                data[cum_num] = data[cum_num]@la.fractional_matrix_power(cov,-1/2)#/np.sqrt(np.mean(data[cum_num]**2))
+                #data[cum_num] = data[cum_num]@la.fractional_matrix_power(cov,-1/2)
+                data[cum_num] /= np.sqrt(np.mean(data[cum_num]**2, axis = 0))[None,:]
                 labels.append((dataframe.to_numpy()[:, -1]).astype('int'))
                 
                 cum_num += 1

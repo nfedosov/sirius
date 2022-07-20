@@ -14,8 +14,8 @@ from lsl_inlet import LSLInlet
 
 import csv
 
-session_num = 0
-num_exp = 5
+session_num = 321
+num_exp =201
 
 
 
@@ -38,7 +38,8 @@ def record_data(exp_settings, inlet, nseconds):
         pass
         # сбрасываем буфер
         #chunk,t_stamp = inlet.get_next_chunk()
-            
+          
+    print('\nstarting...')
     while(n_samples_received/fs <= nseconds):
 
             chunk, t_stamp = inlet.get_next_chunk()
@@ -69,7 +70,7 @@ if __name__ == '__main__':
     STATES_CODES_DICT = {'Rest': 0, 'Left': 1, 'Right':3 , 'Legs': 2}
     EXP_SETTINGS_PROBES = {
         'exp_name': 'example',
-        'lsl_stream_name': 'pseudo_data',
+        'lsl_stream_name': 'NVX52_Data',
        
 
         'max_chunklen': 10
@@ -81,7 +82,7 @@ if __name__ == '__main__':
 
 
     # record probes
-    recorded_data, channels, fs = record_data(EXP_SETTINGS_PROBES, inlet, nseconds = 10)
+    recorded_data, channels, fs = record_data(EXP_SETTINGS_PROBES, inlet, nseconds = 10*60)
 
     time = np.arange(recorded_data.shape[0])/fs
 

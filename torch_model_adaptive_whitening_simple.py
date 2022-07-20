@@ -47,7 +47,7 @@ class EnvelopeDetector(nn.Module):
         h =sn.firwin(self.ENVELOPE_SIZE, 2, window='hamming', pass_zero=True, fs=fs)
         self.conv_envelope.weight.data = torch.tensor(np.tile(h[None,None,:],(in_channels,1,1)))
         
-        h =sn.firwin(self.FILTERING_SIZE, [4,30], window='hamming', pass_zero=False, fs=fs)
+        h =sn.firwin(self.FILTERING_SIZE, [6,30], window='hamming', pass_zero=False, fs=fs)
         self.conv_envelope.weight.data = torch.tensor(np.tile(h[None,None,:],(in_channels,1,1)))
         
         

@@ -13,6 +13,7 @@ from torch.nn.utils import parametrize
 import pandas as pd
 from matplotlib import pyplot as plt
 from scipy.signal import welch
+import scipy.linalg as la
     
     
 class Symmetric(nn.Module):
@@ -48,7 +49,7 @@ class EnvelopeDetector(nn.Module):
         h =sn.firwin(self.ENVELOPE_SIZE, 2, window='hamming', pass_zero=True, fs=fs)
         self.conv_envelope.weight.data = torch.tensor(np.tile(h[None,None,:],(in_channels,1,1)))
         
-        h =sn.firwin(self.FILTERING_SIZE, [4,30], window='hamming', pass_zero=False, fs=fs)
+        h =sn.firwin(self.FILTERING_SIZE, [6,30], window='hamming', pass_zero=False, fs=fs)
         self.conv_envelope.weight.data = torch.tensor(np.tile(h[None,None,:],(in_channels,1,1)))
         
         
@@ -172,7 +173,7 @@ class Model:
     def __init__(self):
         self.labels_id = [1,2,3]
         self.srate = 128
-        self.b, self.a = sn.butter(2, [2, 40], btype='bandpass', fs=self.srate)
+        self.b, self.a = sn.butter(2, [5, 36], btype='bandpass', fs=self.srate)
         
         #CHANGE !!!!!!!
         self.b50, self.a50 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
@@ -182,14 +183,14 @@ class Model:
         self.train_batch_size = 1024
         self.val_batch_size = 1024
         self.test_batch_size = 512
-        self.train_sessions = np.arange(1,80,dtype = int)#[1]
+        self.train_sessions = np.arange(2,110,dtype = int)#[1]
         self.train_runs = [0, 1,3,4]
-        self.val_sessions = np.arange(1,80,dtype = int)#[1]
+        self.val_sessions = np.arange(2,110,dtype = int)#[1]
         self.val_runs = [2,5]
-        self.test_sessions = np.arange(81,110,dtype = int)
+        self.test_sessions = np.arange(1,2,dtype = int)
         self.test_runs = [0,1,2,3,4,5]
         #self.percentage_of_train = 0.85
-        self.epochs = 200
+        self.epochs = 100
         self.criterion = nn.CrossEntropyLoss()
         self.device = 'cpu'
         self.train_val_stride = 64#self.lag_backwards // 2
@@ -257,7 +258,7 @@ class Model:
 
         self.model = SimpleNet(data_storage_train.data.shape[1], len(self.labels_id), self.lag_backwards, self.srate)
         self.model.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=2e-3)#3e-4)#weight_decay=1e-2)#0.02#3e-4
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=3e-4)#3e-4)#weight_decay=1e-2)#0.02#3e-4
 
         print("Trainable params: ", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
         print("Total params: ", sum(p.numel() for p in self.model.parameters() if p.requires_grad))
@@ -328,8 +329,9 @@ class DataStorage:
                 
                 data[cum_num] = sn.lfilter(b, a, data[cum_num], axis=0)
                 data[cum_num] = sn.lfilter(b50, a50, data[cum_num], axis=0)
-                
-                data[cum_num] = data[cum_num]/np.sqrt(np.mean(data[cum_num]**2))
+                cov = np.cov(data[cum_num].T)
+                data[cum_num] = data[cum_num]@la.fractional_matrix_power(cov,-1/2)
+                #data[cum_num] = data[cum_num]/np.sqrt(np.mean(data[cum_num]**2))
                 labels.append((dataframe.to_numpy()[:, -1]).astype('int'))
                 
                 #plt.figure()

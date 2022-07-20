@@ -13,8 +13,8 @@ import PyQt6.QtWidgets as QtWidgets
 from visualizer import Panel
 import csv
 
-session_num = 0
-num_exp = 3
+session_num = 321
+num_exp = 2
 
 
 
@@ -56,8 +56,9 @@ def record_data(exp_settings, inlet, panel):
 
         while n_samples_received_in_block < n_samples:
             chunk, t_stamp = inlet.get_next_chunk()
-
+            QtWidgets.QApplication.processEvents()
             if chunk is not None:
+               
                 n_samples_in_chunk = len(chunk)
 
                 if n_samples_in_chunk > n_samples-n_samples_received_in_block:
@@ -98,22 +99,26 @@ if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s> %(message)s', level=logging.INFO, handlers=handlers)
 
     # main parameters
-    PROBES_DURATION_1 = 3
+    PROBES_DURATION_1 = 5
     STATES_CODES_DICT = {'Rest': 0, 'Left': 1, 'Right':3 , 'Legs': 2}
     EXP_SETTINGS_PROBES = {
         'exp_name': 'example',
-        'lsl_stream_name': 'pseudo_data',
+        'lsl_stream_name': 'NVX52_Data',
         'blocks': {
             'Rest': {'duration': 5, 'id': STATES_CODES_DICT['Rest'], 'message': '+'},
             'Legs': {'duration': PROBES_DURATION_1, 'id': STATES_CODES_DICT['Legs'], 'message': 'Ноги'},
-            'Right': {'duration': PROBES_DURATION_1, 'id': STATES_CODES_DICT['Right'], 'message': 'Правая рука'},
-            'Left': {'duration': PROBES_DURATION_1, 'id': STATES_CODES_DICT['Left'], 'message': 'Левая рука'},
-            'Prepare': {'duration': 10, 'id': 42, 'message': 'Готовность 10 секунд'}
+            'Right': {'duration': PROBES_DURATION_1, 'id': STATES_CODES_DICT['Right'], 'message': 'Правая\n рука'},
+            'Left': {'duration': PROBES_DURATION_1, 'id': STATES_CODES_DICT['Left'], 'message': 'Левая\n рука'},
+            'Prepare': {'duration': 10, 'id': -42, 'message': 'Готовность \n10 секунд'}
         },
-        'sequence': ['Legs', 'Left', 'Right']*2,
+        'sequence': ['Legs', 'Left', 'Right']*22,
         'max_chunklen': 10
     }
     np.random.shuffle(EXP_SETTINGS_PROBES['sequence'])
+    for i in range(0,len(EXP_SETTINGS_PROBES['sequence'])):
+        EXP_SETTINGS_PROBES['sequence'].insert(i*2,'Rest')
+        
+        
     EXP_SETTINGS_PROBES['sequence'] = ['Prepare']+EXP_SETTINGS_PROBES['sequence']
 
     # connect to LSL stream
@@ -123,6 +128,7 @@ if __name__ == '__main__':
     app = QtWidgets.QApplication([])
     text_panel = Panel()
     text_panel.InitWindow()
+    text_panel.show()
     text_panel.update()
     # QtWidgets.QApplication.processEvents()
     #app.exec()

@@ -93,13 +93,13 @@ class SimpleNet(nn.Module):
 
         self.detector = EnvelopeDetector(self.total_input_channels, self.CHANNELS_PER_CHANNEL, srate)
 
-        self.final_out_features = self.ICA_CHANNELS * ((lag_backward - self.detector.FILTERING_SIZE - \
+        self.final_out_features = self.ICA_CHANNELS * ((256 - self.detector.FILTERING_SIZE - \
                                                         self.detector.ENVELOPE_SIZE + 2) // self.fin_layer_decim)
 
         self.features_batchnorm = torch.nn.BatchNorm1d(self.final_out_features, affine=False)
         self.unmixed_batchnorm = torch.nn.BatchNorm1d(self.total_input_channels, affine=False)
 
-        self.batchnorm1 = torch.nn.BatchNorm1d(35, affine=False)
+        #self.batchnorm1 = torch.nn.BatchNorm1d(35, affine=False)
         
 
 
@@ -111,79 +111,74 @@ class SimpleNet(nn.Module):
         
         
         
-  
-        #self.human_pool3 = nn.MaxPool2d((4,12),stride = 6)
-        #flatten
-        
-        self.prelinear1 = nn.Linear(self.in_channels,35)
-        self.prelinear2 = nn.Linear(35,35)
-        self.prelinear3 = nn.Linear(32,32)
-        self.prelinear4 = nn.Linear(32,32)
-        self.prelinear5 = nn.Linear(35,self.ICA_CHANNELS)
-        #self.human_linear2 =  
-        
-        
-        #abs
-        
-        # maxpool
-        
-        # conv2 
-        
-        # relu
+        #self.linear_cov = nn.Linear(378, 27)
     
-        #maxpool hard
+        self.N_tau = 20
         
-        #flatten
-        
-        #sigmoud
-        
-        #parallelelirizing
-        #sigmoid to weights
-        
-        #sigmoid to outputs
+        self.tau = np.arange(0, self.N_tau*3+3,3)
         
         
-    
-    
         
+        self.comb_inv = nn.Linear(self.N_tau, 1)
         
+        self.prefiltering = nn.Conv1d(27, 27, bias=False, kernel_size=self.detector.FILTERING_SIZE,
+                                        groups=27, padding='same')
         
         
 
     def forward(self, inputs):
         
-        x = torch.transpose(inputs,1,2)
-        x = torch.nn.functional.tanh(self.prelinear1(x))
-        x = torch.transpose(x,1,2)
-        
-        x = self.batchnorm1(x)
-        
-        
-    
-        x = torch.transpose(x,1,2)
-        x = torch.nn.functional.tanh(self.prelinear2(x))
-        x = torch.transpose(x,1,2)
-        
-        x = self.batchnorm1(x)
-        
-        # x = torch.transpose(x,1,2)
-        # x = torch.exp(-torch.pow(self.prelinear3(x),2))
-        # x = torch.transpose(x,1,2)
-        
-        # x = self.batchnorm1(x)
-        
-        # x = torch.transpose(x,1,2)
-        # x = torch.exp(-torch.pow(self.prelinear4(x),2))
-        # x = torch.transpose(x,1,2)
-        
-        # x = self.batchnorm1(x)
+   
+        x = self.prefiltering(inputs)
+         
+       
+        inv_covs = torch.tensor(np.zeros((inputs.size(0),27,27,self.N_tau),dtype = 'float32'))
         
         
-        x = torch.transpose(x,1,2)
-        x = torch.nn.functional.tanh(self.prelinear5(x))
-        all_inputs = torch.transpose(x,1,2)
+        for i, tau in enumerate(self.tau):
+            cov = torch.matmul(x[:,:,tau:], torch.transpose(inputs[:,:,:-tau], 1, 2))/(inputs.size(2)-tau)
+            
+       
+            L,inv_covs[:,:,:,i] = torch.linalg.eigh(cov)
+            
+        x = torch.squeeze(self.comb_inv(inv_covs))
+            
+            
         
-        #all_inputs = self.ica(inputs)
+        
+        
+        #cov_6 = torch.matmul(inputs[:,:,6:], torch.transpose(inputs[:,:,:-6], 1, 2))/(inputs.size(2)-6)
+        
+        #cov_12 = torch.matmul(inputs[:,:,12:], torch.transpose(inputs[:,:,:-12], 1, 2))/(inputs.size(2)-12)
+        
+        #cov_18 = torch.matmul(inputs[:,:,18:], torch.transpose(inputs[:,:,:-18], 1, 2))/(inputs.size(2)-18)
+        
+
+
+        #inv_cov_6 = torch.linalg.inv(cov_6)
+        #inv_cov_12 = torch.linalg.inv(cov_12)
+        #inv_cov_18 = torch.linalg.inv(cov_18)
+        
+        
+
+        #triu_indices = torch.triu_indices(27, 27)
+        #vec_cov_6 = cov_6[:,triu_indices[0], triu_indices[1]]
+        
+        #triu_indices = torch.triu_indices(27, 27)
+        #vec_cov_12 = cov_12[:,triu_indices[0], triu_indices[1]]
+        
+        #triu_indices = torch.triu_indices(27, 27)
+        #vec_cov_18 = cov_18[:,triu_indices[0], triu_indices[1]]
+        
+        
+        #out_vec_6 = self.sigmoid(self.linear_cov(vec_cov_6))[:,:,None]
+        #out_vec_12 = self.sigmoid(self.linear_cov(vec_cov_12))[:,:,None]
+        #out_vec_18 = self.sigmoid(self.linear_cov(vec_cov_18))[:,:,None]
+        
+        
+        
+        
+        all_inputs = self.ica(torch.matmul(torch.transpose(x,1,2),inputs[:,:,-256:]))
         
         #all_inputs = self.dropout(all_inputs)
 
@@ -233,13 +228,13 @@ class Model:
         self.b50, self.a50 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
         #self.b60, self.a60 = sn.butter(2, [58, 62], btype='bandstop', fs=self.srate)
         #self.b60, self.a60 = [np.ones(self.b60.shape), np.ones(self.a60.shape)]
-        self.lag_backwards = 256
-        self.train_batch_size = 1024
-        self.val_batch_size = 1024
+        self.lag_backwards = 128*10
+        self.train_batch_size = 256
+        self.val_batch_size = 256
         self.test_batch_size = 512
-        self.train_sessions = np.arange(1,80,dtype = int)#[1]
+        self.train_sessions = np.arange(1,3,dtype = int)#[1]
         self.train_runs = [0, 1,3,4]
-        self.val_sessions = np.arange(1,80,dtype = int)#[1]
+        self.val_sessions = np.arange(1,3,dtype = int)#[1]
         self.val_runs = [2,5]
         self.test_sessions = np.arange(81,110,dtype = int)
         self.test_runs = [0,1,2,3,4,5]
@@ -247,11 +242,11 @@ class Model:
         self.epochs = 200
         self.criterion = nn.CrossEntropyLoss()
         self.device = 'cpu'
-        self.train_val_stride = 64# 64#self.lag_backwards // 2
+        self.train_val_stride = 32# 64#self.lag_backwards // 2
         self.test_stride = 1
-        self.train_only_full_class = True
-        self.val_only_full_class = True
-        self.test_only_full_class = True
+        self.train_only_full_class = False
+        self.val_only_full_class = False
+        self.test_only_full_class = False
 
     def get_unnormalized_accuracy(self, outputs, labels):
         class_predicted = outputs.cpu().detach().numpy().argmax(axis=1)

@@ -10,12 +10,12 @@ import numpy as np
 import scipy.signal as sn
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
-session_num = 3
-num_list = [0,1,2,3,4,5]
-srate = 128
+session_num = 321
+num_list = [0,1,2]
+srate = 500
 
 
-b, a = sn.butter(2, [9, 13], btype='bandpass', fs=srate)
+b, a = sn.butter(2, [18, 25], btype='bandpass', fs=srate)
 b50, a50 = sn.butter(2, [48, 52], btype='bandstop', fs=srate)
 b60, a60 = sn.butter(2, [58, 62], btype='bandstop', fs=srate)
 
@@ -30,6 +30,29 @@ for num in num_list:
     data[num] = sn.lfilter(b60, a60, data[num], axis=0)
     
 data = np.concatenate(data)
+
+
+
+
+b, a = sn.butter(2, [18,25], btype='bandpass', fs=srate)
+b50, a50 = sn.butter(2, [48, 52], btype='bandstop', fs=srate)
+b60, a60 = sn.butter(2, [58, 62], btype='bandstop', fs=srate)
+
+'''
+data2 = list()
+
+for num in num_list:
+    dataframe = pd.read_csv(f'results/session_{session_num}/bci_exp_{num}/data.csv')
+    data2.append(dataframe.to_numpy()[:, 1:-1])
+    states.append(dataframe.to_numpy()[:, -1])
+    data2[num] = sn.lfilter(b, a, data2[num], axis=0)
+    data2[num] = sn.lfilter(b50, a50, data2[num], axis=0)
+    data2[num] = sn.lfilter(b60, a60, data2[num], axis=0)
+    
+data2 = np.concatenate(data2)
+
+data = np.concatenate((data,data2))
+'''
 states = np.concatenate(states)
 
 state1_idx = states == 1
@@ -45,7 +68,7 @@ data3 = data[state3_idx,:]
 cov1 = np.cov(data1.T)
 cov2 = np.cov(data2.T)
 cov3 = np.cov(data3.T)
-common_cov = cov1+cov2+cov3
+common_cov = (cov1+cov2+cov3)/3
 
 
 import scipy.linalg as la
@@ -59,22 +82,32 @@ comp2 = data@w2[:,0]
 comp3 = data@w3[:,0]
 
 feat_red = np.zeros((np.sum(available_idx),3))
-win = 256
+win = 500*5
+
+source_idx = np.where(available_idx)[0]
 for i in range(feat_red.shape[0]):
-    feat_red[i,0] = np.log(np.sum(comp1[(np.where(available_idx)[0])[i]-win:(np.where(available_idx)[0])[i]]**2))
+    feat_red[i,0] = np.log(np.sum(comp1[source_idx[i]-win:source_idx[i]]**2))
 for i in range(feat_red.shape[0]):
-    feat_red[i,1] = np.log(np.sum(comp2[(np.where(available_idx)[0])[i]-win:(np.where(available_idx)[0])[i]]**2))
+    feat_red[i,1] = np.log(np.sum(comp2[source_idx[i]-win:source_idx[i]]**2))
 for i in range(feat_red.shape[0]):
-    feat_red[i,2] = np.log(np.sum(comp3[(np.where(available_idx)[0])[i]-win:(np.where(available_idx)[0])[i]]**2))
+    feat_red[i,2] = np.log(np.sum(comp3[source_idx[i]-win:source_idx[i]]**2))
+    
+    
+feat_red = feat_red[500*5-1::500*5]
+
     
     
   
     
 states_red = states[available_idx]
 
-import random
-train_idx = random.sample(np.arange(np.shape(feat_red)[0], dtype = int).tolist(), round(np.shape(feat_red)[0]*7/8))
-test_idx = np.setdiff1d(np.arange(np.shape(feat_red)[0], dtype = int),np.array(train_idx))
+
+
+states_red = states_red[500*5-1::500*5]
+
+#import random
+train_idx = np.arange(np.shape(feat_red)[0], dtype = int)[:round(np.shape(feat_red)[0]*2/3)]
+test_idx = np.setdiff1d(np.arange(np.shape(feat_red)[0], dtype = int),train_idx)
 #train_idx = np.arange(np.shape(feat_red)[0], dtype = int)[:round(np.shape(feat_red)[0]*7/8)]
 #test_idx = np.arange(np.shape(feat_red)[0], dtype = int)[round(np.shape(feat_red)[0]*7/8):]
 
